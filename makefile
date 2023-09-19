@@ -13,7 +13,7 @@ EXEC = linux-server-kv-rat
 IMGUI_DIR = external/imgui/
 
 # Source files
-SRC = main.cpp
+SRC = main.cpp gui.cpp
 SRC += $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp $(IMGUI_DIR)/imgui_stdlib.cpp
 SRC += $(IMGUI_DIR)/imgui_impl_sdl2.cpp $(IMGUI_DIR)/imgui_impl_opengl3.cpp 
 # Object files
