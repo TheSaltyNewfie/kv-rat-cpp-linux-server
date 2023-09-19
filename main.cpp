@@ -8,9 +8,25 @@
 #include <arpa/inet.h>
 #include "external/SDL2/SDL.h"
 #include "external/SDL2/SDL_image.h"
+#include "external/imgui/imgui.h"
+#include "external/imgui/imgui_impl_sdl2.h"
+#include "external/imgui/imgui_impl_opengl3.h"
+#include "external/imgui/imgui_stdlib.h"
+#include <stdio.h>
+#include "external/SDL2/SDL_opengl.h"
+#include <thread>
+#include <queue>
+#include <mutex>
+#include <condition_variable>
+#include "external/nlohmann/json.hpp"
+#include "gui.h"
 
 const int DEFAULT_PORT = 4560;
 const int BUFFER_SIZE = 4096;
+
+std::queue<std::string> commandQueue;  // Shared command queue
+std::mutex queueMutex;                 // Mutex for command queue
+std::condition_variable dataCond; 
 
 std::string receiveData(int clientSocket) 
 {
@@ -46,6 +62,7 @@ std::vector<char> receiveBinaryData(int clientSocket)
 
     return fullData;  // Return the vector containing the received binary data
 }
+
 bool sendData(int clientSocket, const std::string& data) 
 {
     ssize_t bytesSent = send(clientSocket, data.c_str(), data.length(), 0);
@@ -60,63 +77,7 @@ std::string readDataFromStdin()
     return input;
 }
 
-void ShowScreenshotScreen()
-{
-    SDL_Window* window = NULL;
-    SDL_Surface* screenSurface = NULL;
-    if (SDL_Init(SDL_INIT_VIDEO) < 0)
-    {
-        std::cerr << "SDL couldn't initialize: " << SDL_GetError() << std::endl;
-    }
-    // Load image using SDL_Image
-    SDL_Surface* imageSurface = IMG_Load("screenshot.png");
-    if (!imageSurface)
-    {
-        std::cerr << "Failed to load image: " << IMG_GetError() << std::endl;
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-    }
-    int imgWidth = imageSurface->w;
-    int imgHeight = imageSurface->h;
-    window = SDL_CreateWindow("Latest Screenshot", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, imgWidth, imgHeight, SDL_WINDOW_SHOWN);
-    if (window == NULL)
-    {
-        std::cerr << "Window couldn't be created: " << SDL_GetError() << std::endl;
-        SDL_Quit();
-    }
-    // Get window surface
-    screenSurface = SDL_GetWindowSurface(window);
-    // Fill the surface white
-    SDL_FillRect(screenSurface, NULL, SDL_MapRGB(screenSurface->format, 0xFF, 0xFF, 0xFF));
-    // Blit the image surface onto the window surface
-    SDL_BlitSurface(imageSurface, NULL, screenSurface, NULL);
-    // Update the surface
-    SDL_UpdateWindowSurface(window);
-    // Wait for a while to see the image
-    bool quit = false;
-    SDL_Event e;
-
-    // While application is running
-    while (!quit)
-    {
-        // Handle events on queue
-        while (SDL_PollEvent(&e) != 0)
-        {
-            // User requests quit or presses a key
-            if (e.type == SDL_QUIT || e.type == SDL_KEYDOWN)
-            {
-                quit = true;
-            }
-        }
-    }
-    // Destroy image surface and window
-    SDL_FreeSurface(imageSurface);
-    SDL_DestroyWindow(window);
-    // Quit SDL subsystems
-    SDL_Quit();
-}
-
-void server() 
+void server(std::string& sharedOutput, int& mx, int& my) 
 {
     int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (serverSocket == -1) 
@@ -162,132 +123,118 @@ void server()
         }
 
         std::cout << "Client connected.\n";
+        sendData(clientSocket, "accepted.\n");
 
         while (true)
 	    {
-	    	std::string inputData = readDataFromStdin();
-	    	sendData(clientSocket, inputData);
+            std::unique_lock<std::mutex> lock(queueMutex);
+            dataCond.wait(lock, []{ return !commandQueue.empty(); });  // Wait for data
+
+            std::string command = commandQueue.front();  // Get command from shared queue
+            commandQueue.pop();
+
+            lock.unlock();
+
+            // Now process 'command' as you would normally
+            sendData(clientSocket, command);
 
             std::vector<char> imageData;
 
-            if (inputData == "Screenshot")
+            if (command == "Screenshot")
 	    	{
                 std::cout << "Starting saving image.\n";
+                sharedOutput += "Starting saving image.\n";
                 imageData = receiveBinaryData(clientSocket);
                 std::cout << "Binary data received! Size: " << imageData.size() << " bytes\n";
+                sharedOutput += "Binary data received!\n";
 
                 std::ofstream outFile("screenshot.png", std::ios::binary);
                 if (outFile.is_open()) 
                 {
                     std::cout << "Writing to file.\n";
+                    sharedOutput += "Writing to file\n";
                     outFile.write(imageData.data(), imageData.size());
                     if (outFile.good()) {
                         std::cout << "Successfully wrote to the file.\n";
+                        sharedOutput += "Successfully wrote to the file.\n";
                     } else {
                         std::cerr << "Failed to write all data to the file.\n";
+                        sharedOutput += "Failed to write all data to the file.\n";
                     }
                     std::cout << "Closing file.\n";
+                    sharedOutput += "Closing file.\n";
                     outFile.close();
                 } 
                 else 
                 {
                     std::cerr << "Failed to open the file for writing." << std::endl;
+                    sharedOutput += "Failed to open the file for writing.\n";
                 }
                 std::cout << "Saved image!\n";
+                sharedOutput += "Saved image!\n";
                 std::cout << "Showing image.\n";
-                ShowScreenshotScreen();
+                sharedOutput += "Showing image.\n";
+                command.clear();
+                //ShowScreenshotScreen();
 	    	}
-            else if(inputData == "LoadLatestScreenshot")
-            {
-                SDL_Window* window = NULL;
-                SDL_Surface* screenSurface = NULL;
-
-                if (SDL_Init(SDL_INIT_VIDEO) < 0)
-                {
-                    std::cerr << "SDL couldn't initialize: " << SDL_GetError() << std::endl;
-
-                }
-
-                // Load image using SDL_Image
-                SDL_Surface* imageSurface = IMG_Load("screenshot.png");
-                if (!imageSurface)
-                {
-                    std::cerr << "Failed to load image: " << IMG_GetError() << std::endl;
-                    SDL_DestroyWindow(window);
-                    SDL_Quit();
-
-                }
-                int imgWidth = imageSurface->w;
-                int imgHeight = imageSurface->h;
-
-                window = SDL_CreateWindow("Latest Screenshot", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, imgWidth, imgHeight, SDL_WINDOW_SHOWN);
-                if (window == NULL)
-                {
-                    std::cerr << "Window couldn't be created: " << SDL_GetError() << std::endl;
-                    SDL_Quit();
-
-                }
-
-                // Get window surface
-                screenSurface = SDL_GetWindowSurface(window);
-
-                // Fill the surface white
-                SDL_FillRect(screenSurface, NULL, SDL_MapRGB(screenSurface->format, 0xFF, 0xFF, 0xFF));
-
-                // Blit the image surface onto the window surface
-                SDL_BlitSurface(imageSurface, NULL, screenSurface, NULL);
-
-                // Update the surface
-                SDL_UpdateWindowSurface(window);
-
-                // Wait for a while to see the image
-                bool quit = false;
-                SDL_Event e;
-
-                // While application is running
-                while (!quit)
-                {
-                    // Handle events on queue
-                    while (SDL_PollEvent(&e) != 0)
-                    {
-                        // User requests quit or presses a key
-                        if (e.type == SDL_QUIT || e.type == SDL_KEYDOWN)
-                        {
-                            quit = true;
-                        }
-                    }
-                }
-
-                // Destroy image surface and window
-                SDL_FreeSurface(imageSurface);
-                SDL_DestroyWindow(window);
-
-                // Quit SDL subsystems
-                SDL_Quit();
-            }
 	    	else
 	    	{
 	    		std::string recv = receiveData(clientSocket);
 	    		if (recv.empty())
 	    		{
 	    			std::cout << "Client disconnected.\n";
+                    sharedOutput += "Client disconnected.\n";
 	    			close(clientSocket);
                     break;
 	    		}
 
 	    		std::cout << "client: " << recv << "\n";
+                sharedOutput += "client: " + recv + "\n";
+                command.clear();
 	    	}
 	    }
     }
 }
 
-int main() 
+void sdl_thread(std::string& sharedOutput, int& mx, int& my, std::queue<std::string> &commandQueue, std::mutex &queueMutex, std::condition_variable &dataCond)
 {
-    std::cout << "SDL2 Is in this build, very experimental\n";
-    server();
-    return 0;
+    SDL_IMGUI_GUI(sharedOutput, mx, my, commandQueue, queueMutex, dataCond);
 }
 
-/*
-        
-*/
+void server_thread(std::string& sharedOutput, int& mx, int& my)
+{
+    server(sharedOutput, mx, my);
+}
+
+int main(int argc, char**argv) 
+{
+    if(argc < 2)
+    {
+        printf("Usage: ./linux-server-kv-rat [headless/gui]\n");
+    }
+
+    std::cout << "SDL2 Is in this build, very experimental\n";
+
+    std::string sharedOutput;
+    int x, y;
+
+    if(std::string(argv[1]) == "headless")
+    {
+        //std::thread sdlThread(sdl_thread, std::ref(sharedOutput), std::ref(x), std::ref(y), std::ref(commandQueue), std::ref(queueMutex), std::ref(dataCond));
+        std::thread serverThread(server_thread, std::ref(sharedOutput), std::ref(x), std::ref(y));
+
+        //sdlThread.join();
+        serverThread.join();
+    }
+
+    if(std::string(argv[1])== "gui")
+    {
+        std::thread sdlThread(sdl_thread, std::ref(sharedOutput), std::ref(x), std::ref(y), std::ref(commandQueue), std::ref(queueMutex), std::ref(dataCond));
+        std::thread serverThread(server_thread, std::ref(sharedOutput), std::ref(x), std::ref(y));
+
+        sdlThread.join();
+        serverThread.join();
+    }
+
+    return 0;
+}
