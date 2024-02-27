@@ -174,6 +174,12 @@ void imgui_command_window(bool* done, std::queue<std::string> &commandQueue, std
         show_client_screen = true;
     }
 
+    if(ImGui::Button("Exit"))
+    {
+        commandQueue.push("Shutdown");
+        exit(0);
+    }
+
     //ImGui::Text("X: %i Y: %i", mx, my);
     std::string inputCommand;
 
@@ -223,7 +229,7 @@ int SDL_IMGUI_GUI(std::string& sharedOutput, int& mx, int& my, std::queue<std::s
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
     // Create window and OpenGL context
-    SDL_Window* window = SDL_CreateWindow("Dear ImGui SDL2+OpenGL3 example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 2560, 1440, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN_DESKTOP);
+    SDL_Window* window = SDL_CreateWindow("Dear ImGui SDL2+OpenGL3 example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 2560, 1440, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_SHOWN ); //| SDL_WINDOW_FULLSCREEN_DESKTOP
     //SDL_SetWindowOpacity(window, 0.25f);
     SDL_GLContext gl_context = SDL_GL_CreateContext(window);
     SDL_GL_MakeCurrent(window, gl_context);

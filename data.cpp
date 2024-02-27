@@ -8,7 +8,7 @@ namespace json
 {
 
     // Function to receive JSON data from a socket
-    nlohmann::json receiveData(int socket_fd) 
+    nlohmann::json recvData(int socket_fd) 
     {
         char buffer[4096];
         memset(buffer, 0, sizeof(buffer));
@@ -16,7 +16,7 @@ namespace json
 
         if (bytes_received < 0)
         {
-            std::cerr << "Error in recv(). Exiting." << std::endl;
+            std::cerr << "Error in recvData(). Exiting." << std::endl;
             exit(EXIT_FAILURE);
         }
 
